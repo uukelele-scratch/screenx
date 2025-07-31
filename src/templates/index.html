@@ -46,7 +46,9 @@
 
             socket.on('screen_update', function(data) {
                 hideStatus();
-                imageElement.src = 'data:image/jpeg;base64,' + data.image_data;
+                if (data.image_data) {
+                    imageElement.src = 'data:image/jpeg;base64,' + data.image_data;
+                } // otherwise we assume that there was no change between the last two frames
             });
 
             socket.on('connect', () => {

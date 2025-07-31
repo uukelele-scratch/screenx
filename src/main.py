@@ -124,6 +124,8 @@ class ScreenX(QMainWindow):
         self.image_queue = queue.Queue(maxsize=2)
         self.server_thread = None
         self.is_server_running = False
+        self.last_frame = None
+
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_screenshot)
@@ -134,6 +136,7 @@ class ScreenX(QMainWindow):
 
     def toggle_server(self):
         if not self.is_server_running:
+            self.last_frame = None
             try:
                 port = int(self.port_input.text())
                 self.server_thread = ServerThread(self.image_queue, "0.0.0.0", port)
@@ -169,8 +172,12 @@ class ScreenX(QMainWindow):
         pil_img = Image.frombytes("RGB", sct_img.size, sct_img.rgb, "raw", "RGB")
         with io.BytesIO() as buffer:
             pil_img.save(buffer, 'JPEG', quality=75)
-            if not self.image_queue.full():
-                self.image_queue.put(buffer.getvalue())
+            jpeg_bytes = buffer.getvalue()
+            if jpeg_bytes != self.last_frame:
+                # If it's different, update last_frame and put it in the queue
+                self.last_frame = jpeg_bytes
+                if not self.image_queue.full():
+                    self.image_queue.put(jpeg_bytes)
 
     def closeEvent(self, event):
         print("Closing application.")
