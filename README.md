@@ -6,7 +6,7 @@ screenx - cross-platform screen sharing client and server
 
 **1. Clone the repository:**
 ```bash
-git clone https://github.com/uukelele-scratch/screenx
+git clone https://github.com/uukelele-scratch/screenx.git
 cd screenx
 ```
 
