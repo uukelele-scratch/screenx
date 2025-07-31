@@ -7,8 +7,8 @@ import threading
 import queue
 
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QLabel, QComboBox, QHBoxLayout, QLineEdit, QPushButton, QSizePolicy
-from PyQt5.QtGui import QPixmap, QImage, QPainter, QIntValidator
-from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtGui import QPixmap, QImage, QPainter, QIntValidator, QCursor
+from PyQt5.QtCore import QTimer, Qt, QRect, QPoint
 
 from flask import Flask, render_template
 from flask_socketio import SocketIO
@@ -55,9 +55,9 @@ class ServerThread(threading.Thread):
 
     def frame_sender(self):
         while True:
-            jpeg_bytes = self.image_queue.get()
-            b64_string = base64.b64encode(jpeg_bytes).decode('utf-8')
-            self.socketio.emit('screen_update', {'image_data': b64_string})
+            payload = self.image_queue.get()
+
+            self.socketio.emit('screen_update', payload)
             self.socketio.sleep(0)
 
     def run(self):
@@ -125,6 +125,7 @@ class ScreenX(QMainWindow):
         self.server_thread = None
         self.is_server_running = False
         self.last_frame = None
+        self.last_cursor_pos = None
 
 
         self.timer = QTimer()
@@ -137,6 +138,7 @@ class ScreenX(QMainWindow):
     def toggle_server(self):
         if not self.is_server_running:
             self.last_frame = None
+            self.last_cursor_pos = None
             try:
                 port = int(self.port_input.text())
                 self.server_thread = ServerThread(self.image_queue, "0.0.0.0", port)
@@ -164,20 +166,37 @@ class ScreenX(QMainWindow):
     def update_screenshot(self):
         monitor_index = self.monitor_dropdown.currentData()
         mon = self.sct.monitors[monitor_index]
+        
+        cursor_pos_global = QCursor.pos()
         sct_img = self.sct.grab(mon)
         
-        q_image = QImage(bytes(sct_img.bgra), sct_img.width, sct_img.height, QImage.Format_ARGB32)
-        self.local_viewer.setPixmap(QPixmap.fromImage(q_image))
+        monitor_rect = QRect(mon['left'], mon['top'], mon['width'], mon['height'])
+        relative_pos = cursor_pos_global - QPoint(mon['left'], mon['top']) if monitor_rect.contains(cursor_pos_global) else None
         
         pil_img = Image.frombytes("RGB", sct_img.size, sct_img.rgb, "raw", "RGB")
         with io.BytesIO() as buffer:
             pil_img.save(buffer, 'JPEG', quality=75)
             jpeg_bytes = buffer.getvalue()
-            if jpeg_bytes != self.last_frame:
-                # If it's different, update last_frame and put it in the queue
+            
+            screen_changed = (jpeg_bytes != self.last_frame)
+            cursor_changed = (relative_pos != self.last_cursor_pos)
+
+            payload = {}
+            
+            if screen_changed:
+                q_image = QImage(bytes(sct_img.bgra), sct_img.width, sct_img.height, QImage.Format_ARGB32)
+                self.local_viewer.setPixmap(QPixmap.fromImage(q_image))
+                
                 self.last_frame = jpeg_bytes
+                payload['image_data'] = base64.b64encode(jpeg_bytes).decode('utf-8')
+
+            if cursor_changed:
+                self.last_cursor_pos = relative_pos
+                payload['cursor_pos'] = {'x': relative_pos.x(), 'y': relative_pos.y()} if relative_pos else None
+                    
+            if payload:
                 if not self.image_queue.full():
-                    self.image_queue.put(jpeg_bytes)
+                    self.image_queue.put(payload)
 
     def closeEvent(self, event):
         print("Closing application.")

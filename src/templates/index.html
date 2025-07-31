@@ -20,11 +20,24 @@
             z-index: 10;
             transition: opacity 0.5s;
         }
+        #cursor {
+            position: absolute;
+            width: 24px;
+            height: 30px;
+            /*background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="white" stroke="black" stroke-width="1.5"><path d="M4 4l16 7-7 2-2 7-7-16z"/></svg>');*/
+            background-image: url('/static/arrow.png');
+            background-size: contain;
+            transition: top 0.05s linear, left 0.05s linear;
+            display: none;
+            pointer-events: none;
+            z-index: 20;
+        }
     </style>
 </head>
 <body>
     <div id="status-overlay">Connecting to server...</div>
     <img id="stream" src="" alt="Live Stream">
+    <div id="cursor"></div>
 
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script>
@@ -32,6 +45,9 @@
             const socket = io();
             const imageElement = document.getElementById('stream');
             const statusOverlay = document.getElementById('status-overlay');
+            const cursorElement = document.getElementById('cursor');
+
+            let firstFrameReceived = false;
 
             function showStatus(message) {
                 statusOverlay.textContent = message;
@@ -40,15 +56,41 @@
             }
 
             function hideStatus() {
+                if (firstFrameReceived) return;
+                firstFrameReceived = true;
                 statusOverlay.style.opacity = '0';
                 setTimeout(() => { statusOverlay.style.zIndex = '-1'; }, 500);
             }
 
             socket.on('screen_update', function(data) {
                 hideStatus();
-                if (data.image_data) {
+
+                if (data.hasOwnProperty('image_data')) {
                     imageElement.src = 'data:image/jpeg;base64,' + data.image_data;
-                } // otherwise we assume that there was no change between the last two frames
+                }
+
+                if (data.hasOwnProperty('cursor_pos')) {
+                    const cursorPos = data.cursor_pos;
+
+                    if (cursorPos) {
+                        cursorElement.style.display = 'block';
+
+                        const rect = imageElement.getBoundingClientRect();
+                        const naturalWidth = imageElement.naturalWidth;
+                        const naturalHeight = imageElement.naturalHeight;
+
+                        if (naturalWidth > 0 && naturalHeight > 0) {
+                            const scaleX = rect.width / naturalWidth;
+                            const scaleY = rect.height / naturalHeight;
+                            const cursorLeft = rect.left + (cursorPos.x * scaleX);
+                            const cursorTop = rect.top + (cursorPos.y * scaleY);
+                            cursorElement.style.left = cursorLeft + 'px';
+                            cursorElement.style.top = cursorTop + 'px';
+                        }
+                    } else {
+                        cursorElement.style.display = 'none';
+                    }
+                }
             });
 
             socket.on('connect', () => {
