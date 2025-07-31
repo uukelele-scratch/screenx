@@ -1,0 +1,7 @@
+PyQt5
+mss
+pillow
+numpy
+Flask
+Flask-SocketIO
+eventlet
